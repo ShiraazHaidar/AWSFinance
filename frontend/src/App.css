@@ -427,3 +427,42 @@ tbody tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+/* GRANTS TOOLBAR */
+
+.grant-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.grant-search,
+.grant-filter {
+  border: 1px solid #ccd6df;
+  border-radius: 8px;
+  background: white;
+  color: #00274c;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.grant-search {
+  flex: 1;
+  min-width: 240px;
+}
+
+.grant-search:focus,
+.grant-filter:focus {
+  outline: 2px solid #ffcb05;
+  outline-offset: 1px;
+}
+
+.grant-filter {
+  min-width: 150px;
+  cursor: pointer;
+}
+
+.grant-count {
+  color: #66788a;
+  font-size: 13px;
+  font-weight: 600;
+}

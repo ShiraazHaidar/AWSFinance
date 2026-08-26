@@ -114,7 +114,7 @@ function Dashboard() {
 }
 
 function Grants() {
-  return (
+   return (
     <div>
       <header className="topbar">
         <div>
@@ -128,12 +128,36 @@ function Grants() {
         <button className="primary-button">+ Add Grant</button>
       </header>
 
+      <section className="grant-toolbar">
+        <input
+          className="grant-search"
+          type="text"
+          placeholder="Search grants..."
+        />
+
+        <select className="grant-filter">
+          <option>All Statuses</option>
+          <option>Researching</option>
+          <option>Preparing</option>
+          <option>Submitted</option>
+          <option>Awarded</option>
+        </select>
+
+        <select className="grant-filter">
+          <option>All Years</option>
+          <option>2026</option>
+          <option>2027</option>
+        </select>
+      </section>
+
       <section className="panel">
         <div className="panel-header">
           <div>
             <p className="eyebrow">All Grants</p>
             <h3>Grant Applications</h3>
           </div>
+
+          <span className="grant-count">4 grants</span>
         </div>
 
         <div className="table-wrapper">
@@ -145,28 +169,61 @@ function Grants() {
                 <th>Requested</th>
                 <th>Deadline</th>
                 <th>Status</th>
+                <th>Owner</th>
               </tr>
             </thead>
 
             <tbody>
               <tr>
-                <td>AWS Student Grant</td>
+                <td>
+                  <strong>AWS Student Grant</strong>
+                </td>
                 <td>Amazon Web Services</td>
                 <td>$5,000</td>
-                <td>Oct 15</td>
+                <td>Oct 15, 2026</td>
                 <td>
                   <span className="status submitted">Submitted</span>
                 </td>
+                <td>Shiraaz</td>
               </tr>
 
               <tr>
-                <td>CSG Funding</td>
+                <td>
+                  <strong>CSG Funding</strong>
+                </td>
                 <td>University of Michigan</td>
                 <td>$2,000</td>
-                <td>Nov 3</td>
+                <td>Nov 3, 2026</td>
                 <td>
                   <span className="status preparing">Preparing</span>
                 </td>
+                <td>Finance Team</td>
+              </tr>
+
+              <tr>
+                <td>
+                  <strong>Technology Grant</strong>
+                </td>
+                <td>Michigan Innovation Fund</td>
+                <td>$10,000</td>
+                <td>Dec 1, 2026</td>
+                <td>
+                  <span className="status researching">Researching</span>
+                </td>
+                <td>Shiraaz</td>
+              </tr>
+
+              <tr>
+                <td>
+                  <strong>Community Program Grant</strong>
+                </td>
+                <td>Local Foundation</td>
+                <td>$7,500</td>
+                <td>Jan 12, 2027</td>
+                <td>
+                  <span className="status awarded">Awarded</span>
+                </td>
+                <td>Finance Team</td>
               </tr>
             </tbody>
           </table>
