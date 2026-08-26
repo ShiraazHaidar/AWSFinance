@@ -95,6 +95,7 @@ button {
   cursor: pointer;
 
   transition: 0.2s ease;
+  text-decoration: none;
 }
 
 .nav-item:hover {
