@@ -466,3 +466,106 @@ tbody tr:last-child td {
   font-size: 13px;
   font-weight: 600;
 }
+/* ADD GRANT MODAL */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 39, 76, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.grant-modal {
+  width: 100%;
+  max-width: 620px;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 39, 76, 0.25);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 22px 24px;
+  border-bottom: 1px solid #e2e8ef;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #00274c;
+  font-size: 22px;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  color: #607286;
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.grant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+
+.grant-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #00274c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.grant-form input,
+.grant-form select,
+.grant-form textarea {
+  width: 100%;
+  border: 1px solid #ccd6df;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: #00274c;
+  background: white;
+}
+
+.grant-form input:focus,
+.grant-form select:focus,
+.grant-form textarea:focus {
+  outline: 2px solid #ffcb05;
+  outline-offset: 1px;
+}
+
+.grant-form textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+@media (max-width: 650px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
