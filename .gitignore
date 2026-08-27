@@ -15,3 +15,7 @@ cdk.out/
 .vscode/
 .DS_Store
 Thumbs.db
+
+infrastructure/.tmp/
+infrastructure/cdk-security-diff.txt
+infrastructure/cdk-synth-output.txt
