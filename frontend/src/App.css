@@ -232,6 +232,138 @@ button {
   background: #eef2f6;
 }
 
+.logout-button {
+  width: 100%;
+  border: 1px solid #244b6e;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f7f9fc;
+  padding: 10px 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.loading-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #f5f7fa;
+  color: #00274c;
+  font-weight: 700;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #001a33 0%, #00274c 100%);
+  padding: 40px 20px;
+}
+
+.login-shell {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 22px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: white;
+  padding: 0 4px;
+}
+
+.login-brand h1 {
+  margin: 0;
+  font-size: 30px;
+  color: white;
+}
+
+.login-card {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 18px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  padding: 28px 24px;
+  color: #00274c;
+}
+
+.login-card h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: #00274c;
+}
+
+.login-card p {
+  margin: 0 0 18px;
+  color: #607286;
+}
+
+.login-form {
+  display: grid;
+  gap: 18px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 8px;
+  color: #00274c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-form input {
+  width: 100%;
+  border: 1px solid #ccd6df;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font: inherit;
+  color: #00274c;
+  background: white;
+}
+
+.login-form input:focus {
+  outline: 2px solid #ffcb05;
+  outline-offset: 1px;
+}
+
+.login-button {
+  margin-top: 8px;
+  width: 100%;
+  padding: 12px 16px;
+}
+
+.auth-message {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-error {
+  background: #fff3f3;
+  border: 1px solid #f8c1c1;
+  color: #9b2c2c;
+}
+
+.status-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  color: #607286;
+  font-weight: 600;
+  background: #f8fafc;
+}
+
 /* STAT CARDS */
 
 .stats-grid {

@@ -1,14 +1,225 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import "./App.css";
 import buildersLogo from "./assets/builders-logo.png";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import {
+  completeNewPassword,
+  getConfigError,
+  getCurrentUser,
+  getIdToken,
+  signIn,
+  signOut,
+} from "./auth";
+
+type Grant = {
+  id?: string;
+  name: string;
+  organization: string;
+  amount: string;
+  deadline: string;
+  status: string;
+  owner: string;
+  notes: string;
+  createdAt?: string;
+};
+
+type GrantFormData = Omit<Grant, "id" | "createdAt">;
+
+const emptyGrantForm: GrantFormData = {
+  name: "",
+  organization: "",
+  amount: "",
+  deadline: "",
+  status: "Researching",
+  owner: "",
+  notes: "",
+};
+
+function formatMoney(amount: string | number | undefined | null) {
+  if (amount === undefined || amount === null || amount === "") {
+    return "—";
+  }
+
+  const numericAmount = Number(amount);
+
+  if (Number.isNaN(numericAmount)) {
+    return "—";
+  }
+
+  return `$${numericAmount.toLocaleString()}`;
+}
+
+function formatDeadline(deadline: string | undefined | null) {
+  if (!deadline) {
+    return "—";
+  }
+
+  return new Date(`${deadline}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function statusClass(status: string) {
+  return status.toLowerCase().replaceAll(" ", "-");
+}
+
+async function readApiError(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return response.statusText || "Request failed.";
+  }
+
+  try {
+    const payload = JSON.parse(text) as { error?: string; message?: string };
+    return payload.error || payload.message || text;
+  } catch {
+    return text;
+  }
+}
+
+function LoginPage({
+  onAuthenticated,
+}: {
+  onAuthenticated: (username: string) => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [requiresNewPassword, setRequiresNewPassword] = useState(false);
+  const [pendingUser, setPendingUser] = useState<ReturnType<typeof getCurrentUser>>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const configError = getConfigError();
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const passwordToSubmit = requiresNewPassword ? newPassword : password;
+
+    if (!username.trim() || !passwordToSubmit) {
+      setError(
+        requiresNewPassword
+          ? "Please enter a permanent password."
+          : "Please enter your email and password.",
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      if (requiresNewPassword && pendingUser) {
+        const result = await completeNewPassword(pendingUser, passwordToSubmit);
+        onAuthenticated(result.user.getUsername());
+      } else {
+        const result = await signIn(username.trim(), password);
+
+        if ("requiresNewPassword" in result) {
+          setPendingUser(result.user);
+          setRequiresNewPassword(true);
+          setPassword("");
+          setError(null);
+        } else {
+          onAuthenticated(result.user.getUsername());
+        }
+      }
+    } catch (loginError) {
+      setError(
+        loginError instanceof Error
+          ? loginError.message
+          : "Unable to sign in. Please try again.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <div className="login-shell">
+        <div className="login-brand">
+          <img src={buildersLogo} alt="UMich Builders" className="brand-logo" />
+
+          <div>
+            <p className="eyebrow">AWS Student Builder Group</p>
+            <h1>FinanceTool</h1>
+          </div>
+        </div>
+
+        <div className="login-card">
+          <h2>Secure sign in</h2>
+          <p>Use the approved FinanceTool Cognito account to continue.</p>
+
+          {configError && (
+            <div className="auth-message auth-error">{configError}</div>
+          )}
+
+          {error && <div className="auth-message auth-error">{error}</div>}
+
+          <form className="login-form" onSubmit={handleSubmit}>
+            <label>
+              Email
+              <input
+                type="email"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="user@umich.edu"
+                disabled={Boolean(configError) || isSubmitting}
+              />
+            </label>
+
+            <label>
+              {requiresNewPassword ? "New permanent password" : "Password"}
+              <input
+                type="password"
+                value={requiresNewPassword ? newPassword : password}
+                onChange={(event) =>
+                  requiresNewPassword
+                    ? setNewPassword(event.target.value)
+                    : setPassword(event.target.value)
+                }
+                placeholder={
+                  requiresNewPassword
+                    ? "Choose a permanent password"
+                    : "Enter your password"
+                }
+                disabled={Boolean(configError) || isSubmitting}
+              />
+            </label>
+
+            <button type="submit" className="primary-button login-button" disabled={Boolean(configError) || isSubmitting}>
+              {isSubmitting
+                ? requiresNewPassword
+                  ? "Setting password..."
+                  : "Signing in..."
+                : requiresNewPassword
+                  ? "Set password"
+                  : "Sign in"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Dashboard() {
   return (
     <>
       <header className="topbar">
         <div>
-          <p className="eyebrow">GrantTrackingApp</p>
+          <p className="eyebrow">FinanceTool</p>
           <h2>Finance Dashboard</h2>
           <p className="subtitle">
             Track grants, deadlines, awards, and funding activity.
@@ -115,72 +326,84 @@ function Dashboard() {
 }
 
 function Grants() {
-  type Grant = {
-    name: string;
-    organization: string;
-    amount: string;
-    deadline: string;
-    status: string;
-    owner: string;
-    notes: string;
-  };
-
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<GrantFormData>(emptyGrantForm);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Statuses");
+  const [yearFilter, setYearFilter] = useState("All Years");
 
-  const [grants, setGrants] = useState<Grant[]>([
-    {
-      name: "AWS Student Grant",
-      organization: "Amazon Web Services",
-      amount: "5000",
-      deadline: "2026-10-15",
-      status: "Submitted",
-      owner: "Shiraaz",
-      notes: "",
-    },
-    {
-      name: "CSG Funding",
-      organization: "University of Michigan",
-      amount: "2000",
-      deadline: "2026-11-03",
-      status: "Preparing",
-      owner: "Finance Team",
-      notes: "",
-    },
-    {
-      name: "Technology Grant",
-      organization: "Michigan Innovation Fund",
-      amount: "10000",
-      deadline: "2026-12-01",
-      status: "Researching",
-      owner: "Shiraaz",
-      notes: "",
-    },
-    {
-      name: "Community Program Grant",
-      organization: "Local Foundation",
-      amount: "7500",
-      deadline: "2027-01-12",
-      status: "Awarded",
-      owner: "Finance Team",
-      notes: "",
-    },
-  ]);
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "";
 
-  const [formData, setFormData] = useState<Grant>({
-    name: "",
-    organization: "",
-    amount: "",
-    deadline: "",
-    status: "Researching",
-    owner: "",
-    notes: "",
-  });
+  const loadGrants = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const token = await getIdToken();
+      const response = await fetch(`${apiBaseUrl}/grants`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401
+            ? "Your session has expired. Please sign in again."
+            : await readApiError(response),
+        );
+      }
+
+      const data = (await response.json()) as Grant[];
+      setGrants(Array.isArray(data) ? data : []);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load grants right now.",
+      );
+      setGrants([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiBaseUrl]);
+
+  useEffect(() => {
+    void loadGrants();
+  }, [loadGrants]);
+
+  const filteredGrants = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return grants.filter((grant) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        [grant.name, grant.organization, grant.owner, grant.status]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      const matchesStatus =
+        statusFilter === "All Statuses" || grant.status === statusFilter;
+
+      const grantYear = grant.deadline ? new Date(`${grant.deadline}T00:00:00`).getFullYear().toString() : null;
+      const matchesYear =
+        yearFilter === "All Years" || grantYear === yearFilter;
+
+      return matchesSearch && matchesStatus && matchesYear;
+    });
+  }, [grants, searchTerm, statusFilter, yearFilter]);
 
   function handleInputChange(
-   event:
-  | ChangeEvent<HTMLInputElement>
-  | ChangeEvent<HTMLSelectElement>
-  | ChangeEvent<HTMLTextAreaElement>
+    event:
+      | ChangeEvent<HTMLInputElement>
+      | ChangeEvent<HTMLSelectElement>
+      | ChangeEvent<HTMLTextAreaElement>,
   ) {
     const { name, value } = event.target;
 
@@ -190,79 +413,101 @@ function Grants() {
     }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!formData.name || !formData.organization) {
+    if (!formData.name.trim() || !formData.organization.trim()) {
+      setError("Grant name and organization are required.");
       return;
     }
 
-    setGrants((current) => [...current, formData]);
+    setIsSubmitting(true);
+    setError(null);
 
-    setFormData({
-      name: "",
-      organization: "",
-      amount: "",
-      deadline: "",
-      status: "Researching",
-      owner: "",
-      notes: "",
-    });
+    try {
+      const token = await getIdToken();
+      const response = await fetch(`${apiBaseUrl}/grants`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...formData,
+          name: formData.name.trim(),
+          organization: formData.organization.trim(),
+          amount: formData.amount || "0",
+          owner: formData.owner.trim(),
+          notes: formData.notes.trim(),
+        }),
+      });
 
-    setIsModalOpen(false);
-  }
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401
+            ? "Your session has expired. Please sign in again."
+            : await readApiError(response),
+        );
+      }
 
-  function formatMoney(amount: string) {
-    if (!amount) {
-      return "—";
+      setFormData(emptyGrantForm);
+      setIsModalOpen(false);
+      await loadGrants();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to create the grant right now.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    return `$${Number(amount).toLocaleString()}`;
   }
 
-  function formatDeadline(deadline: string) {
-    if (!deadline) {
-      return "—";
-    }
-
-    return new Date(`${deadline}T00:00:00`).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function statusClass(status: string) {
-    return status.toLowerCase().replaceAll(" ", "-");
-  }
+  const yearOptions = Array.from(
+    new Set(
+      grants
+        .map((grant) =>
+          grant.deadline
+            ? new Date(`${grant.deadline}T00:00:00`).getFullYear().toString()
+            : null,
+        )
+        .filter((year): year is string => Boolean(year)),
+    ),
+  ).sort((left, right) => right.localeCompare(left));
 
   return (
     <div>
       <header className="topbar">
         <div>
-          <p className="eyebrow">GrantTrackingApp</p>
+          <p className="eyebrow">FinanceTool</p>
           <h2>Grants</h2>
           <p className="subtitle">
             Manage applications, funding amounts, deadlines, and statuses.
           </p>
         </div>
 
-        <button
-          className="primary-button"
-          onClick={() => setIsModalOpen(true)}
-        >
+        <button className="primary-button" onClick={() => setIsModalOpen(true)}>
           + Add Grant
         </button>
       </header>
+
+      {error && <div className="auth-message auth-error">{error}</div>}
 
       <section className="grant-toolbar">
         <input
           className="grant-search"
           type="text"
           placeholder="Search grants..."
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
         />
 
-        <select className="grant-filter">
+        <select
+          className="grant-filter"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+        >
           <option>All Statuses</option>
           <option>Researching</option>
           <option>Preparing</option>
@@ -270,10 +515,17 @@ function Grants() {
           <option>Awarded</option>
         </select>
 
-        <select className="grant-filter">
+        <select
+          className="grant-filter"
+          value={yearFilter}
+          onChange={(event) => setYearFilter(event.target.value)}
+        >
           <option>All Years</option>
-          <option>2026</option>
-          <option>2027</option>
+          {yearOptions.map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
         </select>
       </section>
 
@@ -285,49 +537,55 @@ function Grants() {
           </div>
 
           <span className="grant-count">
-            {grants.length} {grants.length === 1 ? "grant" : "grants"}
+            {filteredGrants.length} {filteredGrants.length === 1 ? "grant" : "grants"}
           </span>
         </div>
 
         <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Grant</th>
-                <th>Organization</th>
-                <th>Requested</th>
-                <th>Deadline</th>
-                <th>Status</th>
-                <th>Owner</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {grants.map((grant, index) => (
-                <tr key={`${grant.name}-${index}`}>
-                  <td>
-                    <strong>{grant.name}</strong>
-                  </td>
-
-                  <td>{grant.organization}</td>
-
-                  <td>{formatMoney(grant.amount)}</td>
-
-                  <td>{formatDeadline(grant.deadline)}</td>
-
-                  <td>
-                    <span
-                      className={`status ${statusClass(grant.status)}`}
-                    >
-                      {grant.status}
-                    </span>
-                  </td>
-
-                  <td>{grant.owner || "—"}</td>
+          {isLoading ? (
+            <div className="status-message">Loading grants...</div>
+          ) : filteredGrants.length === 0 ? (
+            <div className="status-message">
+              No grants matched your current search.
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Grant</th>
+                  <th>Organization</th>
+                  <th>Requested</th>
+                  <th>Deadline</th>
+                  <th>Status</th>
+                  <th>Owner</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filteredGrants.map((grant, index) => (
+                  <tr key={grant.id ?? `${grant.name}-${index}`}>
+                    <td>
+                      <strong>{grant.name}</strong>
+                    </td>
+
+                    <td>{grant.organization}</td>
+
+                    <td>{formatMoney(grant.amount)}</td>
+
+                    <td>{formatDeadline(grant.deadline)}</td>
+
+                    <td>
+                      <span className={`status ${statusClass(grant.status)}`}>
+                        {grant.status}
+                      </span>
+                    </td>
+
+                    <td>{grant.owner || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
 
@@ -343,6 +601,7 @@ function Grants() {
               <button
                 className="modal-close"
                 onClick={() => setIsModalOpen(false)}
+                type="button"
               >
                 ×
               </button>
@@ -443,8 +702,8 @@ function Grants() {
                   Cancel
                 </button>
 
-                <button type="submit" className="primary-button">
-                  Save Grant
+                <button type="submit" className="primary-button" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Grant"}
                 </button>
               </div>
             </form>
@@ -460,7 +719,7 @@ function PlaceholderPage({ title }: { title: string }) {
     <div>
       <header className="topbar">
         <div>
-          <p className="eyebrow">FinanceTool</p>
+          <p className="eyebrow">AWS Student Builder Group</p>
           <h2>{title}</h2>
           <p className="subtitle">This page will be built next.</p>
         </div>
@@ -470,6 +729,51 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [userName, setUserName] = useState("");
+
+  const refreshAuthState = useCallback(() => {
+    const currentUser = getCurrentUser();
+
+    if (!currentUser) {
+      setIsAuthenticated(false);
+      setUserName("");
+      return;
+    }
+
+    currentUser.getSession((error: Error | null, session: any) => {
+      if (error || !session || !session.isValid()) {
+        setIsAuthenticated(false);
+        setUserName("");
+        return;
+      }
+
+      setUserName(currentUser.getUsername());
+      setIsAuthenticated(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshAuthState();
+  }, [refreshAuthState]);
+
+  async function handleLogout() {
+    signOut();
+    setUserName("");
+    setIsAuthenticated(false);
+  }
+
+  if (isAuthenticated === null) {
+    return <div className="loading-screen">Checking your session...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onAuthenticated={(username) => {
+      setUserName(username);
+      setIsAuthenticated(true);
+    }} />;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -535,8 +839,10 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <p>Authorized Signer</p>
-          <span>Secure internal access</span>
+          <p>{userName || "Authorized Signer"}</p>
+          <button type="button" className="logout-button" onClick={handleLogout}>
+            Log out
+          </button>
         </div>
       </aside>
 
@@ -544,18 +850,10 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/grants" element={<Grants />} />
-          <Route
-            path="/documents"
-            element={<PlaceholderPage title="Documents" />}
-          />
-          <Route
-            path="/budgets"
-            element={<PlaceholderPage title="Budgets" />}
-          />
-          <Route
-            path="/settings"
-            element={<PlaceholderPage title="Settings" />}
-          />
+          <Route path="/documents" element={<PlaceholderPage title="Documents" />} />
+          <Route path="/budgets" element={<PlaceholderPage title="Budgets" />} />
+          <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
