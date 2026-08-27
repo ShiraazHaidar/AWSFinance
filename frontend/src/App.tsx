@@ -330,6 +330,7 @@ function Grants() {
   const [grants, setGrants] = useState<Grant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingGrantId, setDeletingGrantId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<GrantFormData>(emptyGrantForm);
   const [searchTerm, setSearchTerm] = useState("");
@@ -464,6 +465,44 @@ function Grants() {
     }
   }
 
+  async function handleDelete(grant: Grant) {
+    if (!grant.id || !window.confirm(`Delete "${grant.name}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingGrantId(grant.id);
+    setError(null);
+
+    try {
+      const token = await getIdToken();
+      const response = await fetch(`${apiBaseUrl}/grants/${encodeURIComponent(grant.id)}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401
+            ? "Your session has expired. Please sign in again."
+            : await readApiError(response),
+        );
+      }
+
+      await loadGrants();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete the grant right now.",
+      );
+    } finally {
+      setDeletingGrantId(null);
+    }
+  }
+
   const yearOptions = Array.from(
     new Set(
       grants
@@ -558,6 +597,7 @@ function Grants() {
                   <th>Deadline</th>
                   <th>Status</th>
                   <th>Owner</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
 
@@ -581,6 +621,17 @@ function Grants() {
                     </td>
 
                     <td>{grant.owner || "—"}</td>
+
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-button"
+                        onClick={() => void handleDelete(grant)}
+                        disabled={deletingGrantId !== null}
+                      >
+                        {deletingGrantId === grant.id ? "Deleting..." : "Delete"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

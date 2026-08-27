@@ -232,6 +232,27 @@ button {
   background: #eef2f6;
 }
 
+.delete-button {
+  border: 1px solid #e4b7b7;
+  border-radius: 6px;
+  background: white;
+  color: #9b2c2c;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.delete-button:hover:not(:disabled) {
+  background: #fff3f3;
+}
+
+.delete-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .logout-button {
   width: 100%;
   border: 1px solid #244b6e;

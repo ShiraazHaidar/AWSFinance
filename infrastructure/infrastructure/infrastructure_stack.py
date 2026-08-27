@@ -62,7 +62,7 @@ class InfrastructureStack(Stack):
             rest_api_name="GrantTrackingApi",
             default_cors_preflight_options=apigateway.CorsOptions(
                 allow_origins=["http://localhost:5173"],
-                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
                 allow_headers=["Content-Type", "Authorization"],
             ),
         )
@@ -100,6 +100,18 @@ class InfrastructureStack(Stack):
             environment={"GRANTS_TABLE_NAME": grants_table.table_name},
         )
 
+        delete_grant_lambda = lambda_.Function(
+            self,
+            "DeleteGrantFunction",
+            function_name="DeleteGrantFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="delete_grant.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "delete_grant")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"GRANTS_TABLE_NAME": grants_table.table_name},
+        )
+
         create_grant_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["dynamodb:PutItem"],
@@ -112,11 +124,25 @@ class InfrastructureStack(Stack):
                 resources=[grants_table.table_arn],
             )
         )
+        delete_grant_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:DeleteItem"],
+                resources=[grants_table.table_arn],
+            )
+        )
 
         grants_resource = api.root.add_resource("grants")
         grants_resource.add_method(
             "POST",
             apigateway.LambdaIntegration(create_grant_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+
+        grant_resource = grants_resource.add_resource("{id}")
+        grant_resource.add_method(
+            "DELETE",
+            apigateway.LambdaIntegration(delete_grant_lambda),
             authorization_type=apigateway.AuthorizationType.COGNITO,
             authorizer=cognito_authorizer,
         )
