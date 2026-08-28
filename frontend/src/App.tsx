@@ -17,18 +17,7 @@ import {
   signIn,
   signOut,
 } from "./auth";
-
-type Grant = {
-  id?: string;
-  name: string;
-  organization: string;
-  amount: string;
-  deadline: string;
-  status: string;
-  owner: string;
-  notes: string;
-  createdAt?: string;
-};
+import { fetchGrants, readApiError, type Grant } from "./grantsApi";
 
 type GrantFormData = Omit<Grant, "id" | "createdAt">;
 
@@ -70,21 +59,6 @@ function formatDeadline(deadline: string | undefined | null) {
 
 function statusClass(status: string) {
   return status.toLowerCase().replaceAll(" ", "-");
-}
-
-async function readApiError(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return response.statusText || "Request failed.";
-  }
-
-  try {
-    const payload = JSON.parse(text) as { error?: string; message?: string };
-    return payload.error || payload.message || text;
-  } catch {
-    return text;
-  }
 }
 
 function LoginPage({
@@ -215,6 +189,106 @@ function LoginPage({
 }
 
 function Dashboard() {
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadGrants = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      setGrants(await fetchGrants());
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load dashboard grants right now.",
+      );
+      setGrants([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadGrants();
+  }, [loadGrants]);
+
+  const metrics = useMemo(() => {
+    const terminalStatuses = new Set(["awarded", "rejected"]);
+    const totalRequested = grants.reduce((total, grant) => {
+      const amount = Number(grant.amount);
+      return total + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+    const totalAwarded = grants.reduce((total, grant) => {
+      if (grant.status.trim().toLowerCase() !== "awarded") {
+        return total;
+      }
+
+      const amount = Number(grant.amount);
+      return total + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+    const activeGrants = grants.filter(
+      (grant) => !terminalStatuses.has(grant.status.trim().toLowerCase()),
+    );
+    const currentDate = new Date();
+    const deadlinesThisMonth = activeGrants.filter((grant) => {
+      if (!grant.deadline) {
+        return false;
+      }
+
+      const deadline = new Date(`${grant.deadline}T00:00:00`);
+      return (
+        !Number.isNaN(deadline.getTime()) &&
+        deadline.getMonth() === currentDate.getMonth() &&
+        deadline.getFullYear() === currentDate.getFullYear()
+      );
+    }).length;
+
+    return {
+      totalRequested,
+      totalAwarded,
+      awardRate: totalRequested === 0 ? 0 : (totalAwarded / totalRequested) * 100,
+      pendingReview: grants.filter(
+        (grant) => grant.status.trim().toLowerCase() === "submitted",
+      ).length,
+      activeGrants: activeGrants.length,
+      deadlinesThisMonth,
+    };
+  }, [grants]);
+
+  const recentGrants = useMemo(
+    () =>
+      grants
+        .map((grant, index) => ({
+          grant,
+          index,
+          createdAt: grant.createdAt ? new Date(grant.createdAt).getTime() : NaN,
+        }))
+        .sort((left, right) => {
+          const leftHasDate = Number.isFinite(left.createdAt);
+          const rightHasDate = Number.isFinite(right.createdAt);
+
+          if (leftHasDate && rightHasDate) {
+            return right.createdAt - left.createdAt;
+          }
+
+          if (leftHasDate) {
+            return -1;
+          }
+
+          if (rightHasDate) {
+            return 1;
+          }
+
+          return left.index - right.index;
+        })
+        .slice(0, 4)
+        .map(({ grant }) => grant),
+    [grants],
+  );
+
   return (
     <>
       <header className="topbar">
@@ -226,31 +300,37 @@ function Dashboard() {
           </p>
         </div>
 
-        <button className="primary-button">+ Add Grant</button>
+        <NavLink className="primary-button" to="/grants">
+          + Add Grant
+        </NavLink>
       </header>
+
+      {error && <div className="auth-message auth-error">{error}</div>}
 
       <section className="stats-grid">
         <div className="stat-card">
           <p>Active Grants</p>
-          <h3>8</h3>
-          <span>3 deadlines this month</span>
+          <h3>{isLoading ? "—" : metrics.activeGrants}</h3>
+          <span>
+            {isLoading ? "Loading..." : `${metrics.deadlinesThisMonth} deadlines this month`}
+          </span>
         </div>
 
         <div className="stat-card">
           <p>Total Requested</p>
-          <h3>$24,500</h3>
-          <span>Across active applications</span>
+          <h3>{isLoading ? "—" : formatMoney(metrics.totalRequested)}</h3>
+          <span>Across all grants</span>
         </div>
 
         <div className="stat-card">
           <p>Total Awarded</p>
-          <h3>$8,000</h3>
-          <span>32.7% award rate</span>
+          <h3>{isLoading ? "—" : formatMoney(metrics.totalAwarded)}</h3>
+          <span>{isLoading ? "Loading..." : `${metrics.awardRate.toFixed(1)}% award rate`}</span>
         </div>
 
         <div className="stat-card">
           <p>Pending Review</p>
-          <h3>4</h3>
+          <h3>{isLoading ? "—" : metrics.pendingReview}</h3>
           <span>Awaiting decisions</span>
         </div>
       </section>
@@ -262,7 +342,9 @@ function Dashboard() {
             <h3>Recent Grants</h3>
           </div>
 
-          <button className="secondary-button">View all grants</button>
+          <NavLink className="secondary-button" to="/grants">
+            View all grants
+          </NavLink>
         </div>
 
         <div className="table-wrapper">
@@ -278,45 +360,33 @@ function Dashboard() {
             </thead>
 
             <tbody>
-              <tr>
-                <td>AWS Student Grant</td>
-                <td>Amazon Web Services</td>
-                <td>$5,000</td>
-                <td>Oct 15</td>
-                <td>
-                  <span className="status submitted">Submitted</span>
-                </td>
-              </tr>
-
-              <tr>
-                <td>CSG Funding</td>
-                <td>University of Michigan</td>
-                <td>$2,000</td>
-                <td>Nov 3</td>
-                <td>
-                  <span className="status preparing">Preparing</span>
-                </td>
-              </tr>
-
-              <tr>
-                <td>Technology Grant</td>
-                <td>Michigan Innovation Fund</td>
-                <td>$10,000</td>
-                <td>Dec 1</td>
-                <td>
-                  <span className="status researching">Researching</span>
-                </td>
-              </tr>
-
-              <tr>
-                <td>Community Program Grant</td>
-                <td>Local Foundation</td>
-                <td>$7,500</td>
-                <td>Jan 12</td>
-                <td>
-                  <span className="status awarded">Awarded</span>
-                </td>
-              </tr>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="dashboard-empty-state">
+                    Loading grants...
+                  </td>
+                </tr>
+              ) : recentGrants.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="dashboard-empty-state">
+                    No grants yet. Add a grant to see it here.
+                  </td>
+                </tr>
+              ) : (
+                recentGrants.map((grant, index) => (
+                  <tr key={grant.id ?? `${grant.name}-${index}`}>
+                    <td>{grant.name}</td>
+                    <td>{grant.organization}</td>
+                    <td>{formatMoney(grant.amount)}</td>
+                    <td>{formatDeadline(grant.deadline)}</td>
+                    <td>
+                      <span className={`status ${statusClass(grant.status)}`}>
+                        {grant.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -345,24 +415,7 @@ function Grants() {
     setError(null);
 
     try {
-      const token = await getIdToken();
-      const response = await fetch(`${apiBaseUrl}/grants`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          response.status === 401
-            ? "Your session has expired. Please sign in again."
-            : await readApiError(response),
-        );
-      }
-
-      const data = (await response.json()) as Grant[];
-      setGrants(Array.isArray(data) ? data : []);
+      setGrants(await fetchGrants());
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -373,7 +426,7 @@ function Grants() {
     } finally {
       setIsLoading(false);
     }
-  }, [apiBaseUrl]);
+  }, []);
 
   useEffect(() => {
     void loadGrants();

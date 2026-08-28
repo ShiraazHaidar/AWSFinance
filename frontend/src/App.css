@@ -192,6 +192,8 @@ button {
 .primary-button,
 .secondary-button {
   border-radius: 8px;
+  display: inline-block;
+  text-decoration: none;
 
   cursor: pointer;
 
@@ -510,6 +512,12 @@ td {
   color: #34495d;
 
   font-size: 14px;
+}
+
+.dashboard-empty-state {
+  color: #607286;
+  font-weight: 600;
+  text-align: center;
 }
 
 tbody tr {
