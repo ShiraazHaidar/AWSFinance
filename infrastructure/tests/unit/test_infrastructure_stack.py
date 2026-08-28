@@ -9,7 +9,7 @@ def test_grants_api_and_lambda_resources_created():
     stack = InfrastructureStack(app, "infrastructure")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::Lambda::Function", 3)
+    template.resource_count_is("AWS::Lambda::Function", 4)
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
@@ -29,6 +29,14 @@ def test_grants_api_and_lambda_resources_created():
         {
             "FunctionName": "DeleteGrantFunction",
             "Handler": "delete_grant.handler",
+            "Runtime": "python3.12",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "UpdateGrantFunction",
+            "Handler": "update_grant.handler",
             "Runtime": "python3.12",
         },
     )
@@ -67,6 +75,15 @@ def test_grants_api_and_lambda_resources_created():
     assert delete_methods[0]["AuthorizationType"] == "COGNITO_USER_POOLS"
     assert "AuthorizerId" in delete_methods[0]
 
+    put_methods = [
+        resource["Properties"]
+        for resource in methods.values()
+        if resource["Properties"].get("HttpMethod") == "PUT"
+    ]
+    assert len(put_methods) == 1
+    assert put_methods[0]["AuthorizationType"] == "COGNITO_USER_POOLS"
+    assert "AuthorizerId" in put_methods[0]
+
     template.has_resource_properties(
         "AWS::ApiGateway::Resource",
         {
@@ -87,4 +104,34 @@ def test_grants_api_and_lambda_resources_created():
     assert delete_statement["Resource"]["Fn::GetAtt"][1] == "Arn"
     assert delete_statement["Resource"]["Fn::GetAtt"][0] in template.find_resources(
         "AWS::DynamoDB::Table"
+    )
+
+    update_policies = [
+        resource["Properties"]["PolicyDocument"]["Statement"]
+        for resource in policies.values()
+        if resource["Properties"].get("PolicyName", "").startswith("UpdateGrantFunction")
+    ]
+    assert len(update_policies) == 1
+    update_statement = update_policies[0][0]
+    assert update_statement["Action"] == "dynamodb:UpdateItem"
+    assert update_statement["Effect"] == "Allow"
+    assert update_statement["Resource"]["Fn::GetAtt"][1] == "Arn"
+    assert update_statement["Resource"]["Fn::GetAtt"][0] in template.find_resources(
+        "AWS::DynamoDB::Table"
+    )
+
+    template.has_resource_properties(
+        "AWS::ApiGateway::Method",
+        {
+            "HttpMethod": "OPTIONS",
+            "Integration": {
+                "IntegrationResponses": [
+                    {
+                        "ResponseParameters": {
+                            "method.response.header.Access-Control-Allow-Methods": "'GET,POST,DELETE,OPTIONS'",
+                        },
+                    }
+                ],
+            },
+        },
     )

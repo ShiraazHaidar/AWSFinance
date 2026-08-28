@@ -244,6 +244,12 @@ button {
   transition: 0.2s ease;
 }
 
+.table-action-button {
+  margin-right: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
 .delete-button:hover:not(:disabled) {
   background: #fff3f3;
 }

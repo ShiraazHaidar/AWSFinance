@@ -112,6 +112,18 @@ class InfrastructureStack(Stack):
             environment={"GRANTS_TABLE_NAME": grants_table.table_name},
         )
 
+        update_grant_lambda = lambda_.Function(
+            self,
+            "UpdateGrantFunction",
+            function_name="UpdateGrantFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="update_grant.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "update_grant")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"GRANTS_TABLE_NAME": grants_table.table_name},
+        )
+
         create_grant_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["dynamodb:PutItem"],
@@ -130,6 +142,12 @@ class InfrastructureStack(Stack):
                 resources=[grants_table.table_arn],
             )
         )
+        update_grant_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:UpdateItem"],
+                resources=[grants_table.table_arn],
+            )
+        )
 
         grants_resource = api.root.add_resource("grants")
         grants_resource.add_method(
@@ -143,6 +161,12 @@ class InfrastructureStack(Stack):
         grant_resource.add_method(
             "DELETE",
             apigateway.LambdaIntegration(delete_grant_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+        grant_resource.add_method(
+            "PUT",
+            apigateway.LambdaIntegration(update_grant_lambda),
             authorization_type=apigateway.AuthorizationType.COGNITO,
             authorizer=cognito_authorizer,
         )

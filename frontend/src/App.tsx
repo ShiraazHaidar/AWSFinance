@@ -331,6 +331,7 @@ function Grants() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingGrantId, setDeletingGrantId] = useState<string | null>(null);
+  const [editingGrant, setEditingGrant] = useState<Grant | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<GrantFormData>(emptyGrantForm);
   const [searchTerm, setSearchTerm] = useState("");
@@ -427,8 +428,13 @@ function Grants() {
 
     try {
       const token = await getIdToken();
-      const response = await fetch(`${apiBaseUrl}/grants`, {
-        method: "POST",
+      const isEditing = Boolean(editingGrant?.id);
+      const response = await fetch(
+        isEditing
+          ? `${apiBaseUrl}/grants/${encodeURIComponent(editingGrant!.id!)}`
+          : `${apiBaseUrl}/grants`,
+        {
+        method: isEditing ? "PUT" : "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -441,7 +447,8 @@ function Grants() {
           owner: formData.owner.trim(),
           notes: formData.notes.trim(),
         }),
-      });
+        },
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -452,17 +459,42 @@ function Grants() {
       }
 
       setFormData(emptyGrantForm);
+      setEditingGrant(null);
       setIsModalOpen(false);
       await loadGrants();
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Unable to create the grant right now.",
+          : editingGrant
+            ? "Unable to update the grant right now."
+            : "Unable to create the grant right now.",
       );
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleAddGrant() {
+    setEditingGrant(null);
+    setFormData(emptyGrantForm);
+    setError(null);
+    setIsModalOpen(true);
+  }
+
+  function handleEdit(grant: Grant) {
+    setEditingGrant(grant);
+    setFormData({
+      name: grant.name,
+      organization: grant.organization,
+      amount: grant.amount,
+      deadline: grant.deadline,
+      status: grant.status,
+      owner: grant.owner,
+      notes: grant.notes,
+    });
+    setError(null);
+    setIsModalOpen(true);
   }
 
   async function handleDelete(grant: Grant) {
@@ -526,7 +558,7 @@ function Grants() {
           </p>
         </div>
 
-        <button className="primary-button" onClick={() => setIsModalOpen(true)}>
+        <button className="primary-button" onClick={handleAddGrant}>
           + Add Grant
         </button>
       </header>
@@ -625,9 +657,17 @@ function Grants() {
                     <td>
                       <button
                         type="button"
+                        className="secondary-button table-action-button"
+                        onClick={() => handleEdit(grant)}
+                        disabled={deletingGrantId !== null || isSubmitting}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
                         className="delete-button"
                         onClick={() => void handleDelete(grant)}
-                        disabled={deletingGrantId !== null}
+                        disabled={deletingGrantId !== null || isSubmitting}
                       >
                         {deletingGrantId === grant.id ? "Deleting..." : "Delete"}
                       </button>
@@ -645,13 +685,16 @@ function Grants() {
           <div className="grant-modal">
             <div className="modal-header">
               <div>
-                <p className="eyebrow">New Grant</p>
-                <h3>Add Grant</h3>
+                <p className="eyebrow">{editingGrant ? "Edit Grant" : "New Grant"}</p>
+                <h3>{editingGrant ? "Edit Grant" : "Add Grant"}</h3>
               </div>
 
               <button
                 className="modal-close"
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => {
+                  setEditingGrant(null);
+                  setIsModalOpen(false);
+                }}
                 type="button"
               >
                 ×
@@ -748,13 +791,16 @@ function Grants() {
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setEditingGrant(null);
+                    setIsModalOpen(false);
+                  }}
                 >
                   Cancel
                 </button>
 
                 <button type="submit" className="primary-button" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save Grant"}
+                  {isSubmitting ? "Saving..." : editingGrant ? "Update Grant" : "Save Grant"}
                 </button>
               </div>
             </form>
