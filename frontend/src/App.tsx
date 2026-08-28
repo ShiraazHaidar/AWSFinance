@@ -18,6 +18,12 @@ import {
   signOut,
 } from "./auth";
 import { fetchGrants, readApiError, type Grant } from "./grantsApi";
+import {
+  createEvent,
+  fetchEvents,
+  type EventFormData,
+  type EventRecord,
+} from "./eventsApi";
 
 type GrantFormData = Omit<Grant, "id" | "createdAt">;
 
@@ -59,6 +65,21 @@ function formatDeadline(deadline: string | undefined | null) {
 
 function statusClass(status: string) {
   return status.toLowerCase().replaceAll(" ", "-");
+}
+
+function formatEventDate(date: string | undefined | null) {
+  if (!date) {
+    return "—";
+  }
+
+  const parsedDate = new Date(`${date}T00:00:00`);
+  return Number.isNaN(parsedDate.getTime())
+    ? "—"
+    : parsedDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
 }
 
 function LoginPage({
@@ -864,6 +885,217 @@ function Grants() {
   );
 }
 
+const emptyEventForm: EventFormData = {
+  name: "",
+  date: "",
+  location: "",
+  budget: "",
+  status: "Planning",
+  notes: "",
+};
+
+function Events() {
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState<EventFormData>(emptyEventForm);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadEvents = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      setEvents(await fetchEvents());
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load events right now.",
+      );
+      setEvents([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
+
+  const sortedEvents = useMemo(
+    () =>
+      [...events].sort((left, right) => {
+        const leftDate = new Date(`${left.date}T00:00:00`).getTime();
+        const rightDate = new Date(`${right.date}T00:00:00`).getTime();
+        if (!Number.isFinite(leftDate)) return 1;
+        if (!Number.isFinite(rightDate)) return -1;
+        return leftDate - rightDate;
+      }),
+    [events],
+  );
+
+  function handleInputChange(
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) {
+    const { name, value } = event.target;
+    setFormData((current) => ({ ...current, [name]: value }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!formData.name.trim() || !formData.date) {
+      setError("Event name and date are required.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await createEvent({
+        ...formData,
+        name: formData.name.trim(),
+        location: formData.location.trim(),
+        budget: formData.budget || "0",
+        notes: formData.notes.trim(),
+      });
+      setFormData(emptyEventForm);
+      setIsModalOpen(false);
+      await loadEvents();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to create the event right now.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">FinanceTool</p>
+          <h2>Events</h2>
+          <p className="subtitle">Plan events, track budgets, and manage important dates.</p>
+        </div>
+        <button
+          className="primary-button"
+          onClick={() => {
+            setError(null);
+            setFormData(emptyEventForm);
+            setIsModalOpen(true);
+          }}
+        >
+          + Add Event
+        </button>
+      </header>
+
+      {error && <div className="auth-message auth-error">{error}</div>}
+
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Schedule</p>
+            <h3>Upcoming Events</h3>
+          </div>
+          <span className="grant-count">
+            {events.length} {events.length === 1 ? "event" : "events"}
+          </span>
+        </div>
+        <div className="table-wrapper">
+          {isLoading ? (
+            <div className="status-message">Loading events...</div>
+          ) : sortedEvents.length === 0 ? (
+            <div className="status-message">No events yet. Add an event to get started.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Date</th>
+                  <th>Location</th>
+                  <th>Budget</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedEvents.map((event, index) => (
+                  <tr key={event.id ?? `${event.name}-${index}`}>
+                    <td><strong>{event.name}</strong></td>
+                    <td>{formatEventDate(event.date)}</td>
+                    <td>{event.location || "—"}</td>
+                    <td>{formatMoney(event.budget)}</td>
+                    <td><span className={`status ${statusClass(event.status)}`}>{event.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      {isModalOpen && (
+        <div className="modal-backdrop">
+          <div className="grant-modal">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">New Event</p>
+                <h3>Add Event</h3>
+              </div>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)} type="button">×</button>
+            </div>
+            <form className="grant-form" onSubmit={handleSubmit}>
+              <label>
+                Event Name
+                <input name="name" type="text" placeholder="Annual fundraiser" value={formData.name} onChange={handleInputChange} required />
+              </label>
+              <div className="form-row">
+                <label>
+                  Date
+                  <input name="date" type="date" value={formData.date} onChange={handleInputChange} required />
+                </label>
+                <label>
+                  Location
+                  <input name="location" type="text" placeholder="Michigan Union" value={formData.location} onChange={handleInputChange} />
+                </label>
+              </div>
+              <div className="form-row">
+                <label>
+                  Budget
+                  <input name="budget" type="number" min="0" placeholder="2500" value={formData.budget} onChange={handleInputChange} />
+                </label>
+                <label>
+                  Status
+                  <select name="status" value={formData.status} onChange={handleInputChange}>
+                    <option>Planning</option>
+                    <option>Upcoming</option>
+                    <option>Completed</option>
+                    <option>Cancelled</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Notes
+                <textarea name="notes" placeholder="Add event notes here..." value={formData.notes} onChange={handleInputChange} />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="submit" className="primary-button" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving..." : "Save Event"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlaceholderPage({ title }: { title: string }) {
   return (
     <div>
@@ -961,6 +1193,15 @@ function App() {
           </NavLink>
 
           <NavLink
+            to="/events"
+            className={({ isActive }) =>
+              isActive ? "nav-item active" : "nav-item"
+            }
+          >
+            Events
+          </NavLink>
+
+          <NavLink
             to="/documents"
             className={({ isActive }) =>
               isActive ? "nav-item active" : "nav-item"
@@ -1000,6 +1241,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/grants" element={<Grants />} />
+          <Route path="/events" element={<Events />} />
           <Route path="/documents" element={<PlaceholderPage title="Documents" />} />
           <Route path="/budgets" element={<PlaceholderPage title="Budgets" />} />
           <Route path="/settings" element={<PlaceholderPage title="Settings" />} />

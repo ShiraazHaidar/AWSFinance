@@ -36,6 +36,18 @@ class InfrastructureStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        events_table = dynamodb.Table(
+            self,
+            "EventsTable",
+            table_name="AWSFinance-Events",
+            partition_key=dynamodb.Attribute(
+                name="id",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
         user_pool = cognito.UserPool(
             self,
             "FinanceToolUserPool",
@@ -124,6 +136,30 @@ class InfrastructureStack(Stack):
             environment={"GRANTS_TABLE_NAME": grants_table.table_name},
         )
 
+        create_event_lambda = lambda_.Function(
+            self,
+            "CreateEventFunction",
+            function_name="CreateEventFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="create_event.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "create_event")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"EVENTS_TABLE_NAME": events_table.table_name},
+        )
+
+        list_events_lambda = lambda_.Function(
+            self,
+            "ListEventsFunction",
+            function_name="ListEventsFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="list_events.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "list_events")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"EVENTS_TABLE_NAME": events_table.table_name},
+        )
+
         create_grant_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["dynamodb:PutItem"],
@@ -148,11 +184,37 @@ class InfrastructureStack(Stack):
                 resources=[grants_table.table_arn],
             )
         )
+        create_event_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:PutItem"],
+                resources=[events_table.table_arn],
+            )
+        )
+        list_events_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:Scan"],
+                resources=[events_table.table_arn],
+            )
+        )
 
         grants_resource = api.root.add_resource("grants")
         grants_resource.add_method(
             "POST",
             apigateway.LambdaIntegration(create_grant_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+
+        events_resource = api.root.add_resource("events")
+        events_resource.add_method(
+            "POST",
+            apigateway.LambdaIntegration(create_event_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+        events_resource.add_method(
+            "GET",
+            apigateway.LambdaIntegration(list_events_lambda),
             authorization_type=apigateway.AuthorizationType.COGNITO,
             authorizer=cognito_authorizer,
         )

@@ -9,11 +9,49 @@ def test_grants_api_and_lambda_resources_created():
     stack = InfrastructureStack(app, "infrastructure")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::Lambda::Function", 4)
+    template.resource_count_is("AWS::Lambda::Function", 6)
+    template.resource_count_is("AWS::DynamoDB::Table", 2)
+    template.has_resource_properties(
+        "AWS::DynamoDB::Table",
+        {
+            "TableName": "AWSFinance-Events",
+            "BillingMode": "PAY_PER_REQUEST",
+            "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+            "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+        },
+    )
+    events_tables = [
+        resource
+        for resource in template.find_resources("AWS::DynamoDB::Table").values()
+        if resource["Properties"].get("TableName") == "AWSFinance-Events"
+    ]
+    assert len(events_tables) == 1
+    assert events_tables[0]["DeletionPolicy"] == "Retain"
+    events_table_id = next(
+        logical_id
+        for logical_id, resource in template.find_resources("AWS::DynamoDB::Table").items()
+        if resource["Properties"].get("TableName") == "AWSFinance-Events"
+    )
     template.has_resource_properties(
         "AWS::Lambda::Function",
         {
             "Handler": "create_grant.handler",
+            "Runtime": "python3.12",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "CreateEventFunction",
+            "Handler": "create_event.handler",
+            "Runtime": "python3.12",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "ListEventsFunction",
+            "Handler": "list_events.handler",
             "Runtime": "python3.12",
         },
     )
@@ -125,7 +163,7 @@ def test_grants_api_and_lambda_resources_created():
         for resource in methods.values()
         if resource["Properties"].get("HttpMethod") == "OPTIONS"
     ]
-    assert len(options_methods) == 3
+    assert len(options_methods) == 4
     assert all(
         method["Integration"]["IntegrationResponses"][0]["ResponseParameters"][
             "method.response.header.Access-Control-Allow-Methods"
@@ -133,3 +171,35 @@ def test_grants_api_and_lambda_resources_created():
         == "'GET,POST,PUT,DELETE,OPTIONS'"
         for method in options_methods
     )
+
+    event_methods = [
+        resource["Properties"]
+        for logical_id, resource in methods.items()
+        if "events" in logical_id.lower()
+        and resource["Properties"].get("HttpMethod") in {"GET", "POST"}
+    ]
+    event_methods = [
+        method
+        for method in event_methods
+        if method["AuthorizationType"] == "COGNITO_USER_POOLS"
+    ]
+    assert len(event_methods) == 2
+
+    event_policies = [
+        resource["Properties"]
+        for resource in policies.values()
+        if resource["Properties"].get("PolicyName", "").startswith(
+            ("CreateEventFunction", "ListEventsFunction")
+        )
+    ]
+    assert len(event_policies) == 2
+    event_statements = [policy["PolicyDocument"]["Statement"] for policy in event_policies]
+    assert sorted(statement[0]["Action"] for statement in event_statements) == [
+        "dynamodb:PutItem",
+        "dynamodb:Scan",
+    ]
+    for statements in event_statements:
+        assert len(statements) == 1
+        assert statements[0]["Effect"] == "Allow"
+        assert statements[0]["Resource"]["Fn::GetAtt"][1] == "Arn"
+        assert statements[0]["Resource"]["Fn::GetAtt"][0] == events_table_id
