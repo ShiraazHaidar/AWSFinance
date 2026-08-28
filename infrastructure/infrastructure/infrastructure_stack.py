@@ -62,7 +62,7 @@ class InfrastructureStack(Stack):
             rest_api_name="GrantTrackingApi",
             default_cors_preflight_options=apigateway.CorsOptions(
                 allow_origins=["http://localhost:5173"],
-                allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                 allow_headers=["Content-Type", "Authorization"],
             ),
         )

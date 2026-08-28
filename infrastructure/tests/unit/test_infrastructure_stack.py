@@ -120,18 +120,16 @@ def test_grants_api_and_lambda_resources_created():
         "AWS::DynamoDB::Table"
     )
 
-    template.has_resource_properties(
-        "AWS::ApiGateway::Method",
-        {
-            "HttpMethod": "OPTIONS",
-            "Integration": {
-                "IntegrationResponses": [
-                    {
-                        "ResponseParameters": {
-                            "method.response.header.Access-Control-Allow-Methods": "'GET,POST,DELETE,OPTIONS'",
-                        },
-                    }
-                ],
-            },
-        },
+    options_methods = [
+        resource["Properties"]
+        for resource in methods.values()
+        if resource["Properties"].get("HttpMethod") == "OPTIONS"
+    ]
+    assert len(options_methods) == 3
+    assert all(
+        method["Integration"]["IntegrationResponses"][0]["ResponseParameters"][
+            "method.response.header.Access-Control-Allow-Methods"
+        ]
+        == "'GET,POST,PUT,DELETE,OPTIONS'"
+        for method in options_methods
     )
