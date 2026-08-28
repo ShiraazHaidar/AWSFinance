@@ -9,7 +9,7 @@ def test_grants_api_and_lambda_resources_created():
     stack = InfrastructureStack(app, "infrastructure")
     template = assertions.Template.from_stack(stack)
 
-    template.resource_count_is("AWS::Lambda::Function", 6)
+    template.resource_count_is("AWS::Lambda::Function", 8)
     template.resource_count_is("AWS::DynamoDB::Table", 2)
     template.has_resource_properties(
         "AWS::DynamoDB::Table",
@@ -52,6 +52,22 @@ def test_grants_api_and_lambda_resources_created():
         {
             "FunctionName": "ListEventsFunction",
             "Handler": "list_events.handler",
+            "Runtime": "python3.12",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "DeleteEventFunction",
+            "Handler": "delete_event.handler",
+            "Runtime": "python3.12",
+        },
+    )
+    template.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "FunctionName": "UpdateEventFunction",
+            "Handler": "update_event.handler",
             "Runtime": "python3.12",
         },
     )
@@ -106,7 +122,8 @@ def test_grants_api_and_lambda_resources_created():
     methods = template.find_resources("AWS::ApiGateway::Method")
     delete_methods = [
         resource["Properties"]
-        for resource in methods.values()
+        for logical_id, resource in methods.items()
+        if "grants" in logical_id.lower()
         if resource["Properties"].get("HttpMethod") == "DELETE"
     ]
     assert len(delete_methods) == 1
@@ -115,7 +132,8 @@ def test_grants_api_and_lambda_resources_created():
 
     put_methods = [
         resource["Properties"]
-        for resource in methods.values()
+        for logical_id, resource in methods.items()
+        if "grants" in logical_id.lower()
         if resource["Properties"].get("HttpMethod") == "PUT"
     ]
     assert len(put_methods) == 1
@@ -163,7 +181,7 @@ def test_grants_api_and_lambda_resources_created():
         for resource in methods.values()
         if resource["Properties"].get("HttpMethod") == "OPTIONS"
     ]
-    assert len(options_methods) == 4
+    assert len(options_methods) == 5
     assert all(
         method["Integration"]["IntegrationResponses"][0]["ResponseParameters"][
             "method.response.header.Access-Control-Allow-Methods"
@@ -185,6 +203,19 @@ def test_grants_api_and_lambda_resources_created():
     ]
     assert len(event_methods) == 2
 
+    event_item_methods = [
+        resource["Properties"]
+        for logical_id, resource in methods.items()
+        if "eventsid" in logical_id.lower()
+        and resource["Properties"].get("HttpMethod") in {"DELETE", "PUT"}
+    ]
+    assert len(event_item_methods) == 2
+    assert all(
+        method["AuthorizationType"] == "COGNITO_USER_POOLS"
+        and "AuthorizerId" in method
+        for method in event_item_methods
+    )
+
     event_policies = [
         resource["Properties"]
         for resource in policies.values()
@@ -203,3 +234,23 @@ def test_grants_api_and_lambda_resources_created():
         assert statements[0]["Effect"] == "Allow"
         assert statements[0]["Resource"]["Fn::GetAtt"][1] == "Arn"
         assert statements[0]["Resource"]["Fn::GetAtt"][0] == events_table_id
+
+    event_item_policies = [
+        resource["Properties"]
+        for resource in policies.values()
+        if resource["Properties"].get("PolicyName", "").startswith(
+            ("DeleteEventFunction", "UpdateEventFunction")
+        )
+    ]
+    assert len(event_item_policies) == 2
+    item_statements = [
+        policy["PolicyDocument"]["Statement"] for policy in event_item_policies
+    ]
+    assert sorted(statement[0]["Action"] for statement in item_statements) == [
+        "dynamodb:DeleteItem",
+        "dynamodb:UpdateItem",
+    ]
+    for statements in item_statements:
+        assert len(statements) == 1
+        assert statements[0]["Effect"] == "Allow"
+        assert statements[0]["Resource"] == {"Fn::GetAtt": [events_table_id, "Arn"]}

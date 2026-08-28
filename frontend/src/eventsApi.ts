@@ -56,3 +56,36 @@ export async function createEvent(event: EventFormData) {
 
   return (await response.json()) as EventRecord;
 }
+
+export async function deleteEvent(eventId: string) {
+  const token = await getIdToken();
+  const response = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(eventId)}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(await requestError(response));
+  }
+}
+
+export async function updateEvent(eventId: string, event: EventFormData) {
+  const token = await getIdToken();
+  const response = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(eventId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(event),
+  });
+
+  if (!response.ok) {
+    throw new Error(await requestError(response));
+  }
+
+  return (await response.json()) as EventRecord;
+}

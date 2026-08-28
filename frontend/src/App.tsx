@@ -20,9 +20,11 @@ import {
 import { fetchGrants, readApiError, type Grant } from "./grantsApi";
 import {
   createEvent,
+  deleteEvent,
   fetchEvents,
   type EventFormData,
   type EventRecord,
+  updateEvent,
 } from "./eventsApi";
 
 type GrantFormData = Omit<Grant, "id" | "createdAt">;
@@ -898,6 +900,8 @@ function Events() {
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+  const [editingEvent, setEditingEvent] = useState<EventRecord | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<EventFormData>(emptyEventForm);
   const [error, setError] = useState<string | null>(null);
@@ -953,24 +957,67 @@ function Events() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await createEvent({
+      const eventData = {
         ...formData,
         name: formData.name.trim(),
         location: formData.location.trim(),
         budget: formData.budget || "0",
         notes: formData.notes.trim(),
-      });
+      };
+      if (editingEvent?.id) {
+        await updateEvent(editingEvent.id, eventData);
+      } else {
+        await createEvent(eventData);
+      }
       setFormData(emptyEventForm);
+      setEditingEvent(null);
       setIsModalOpen(false);
       await loadEvents();
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Unable to create the event right now.",
+          : editingEvent
+            ? "Unable to update the event right now."
+            : "Unable to create the event right now.",
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function handleEdit(event: EventRecord) {
+    setEditingEvent(event);
+    setFormData({
+      name: event.name,
+      date: event.date,
+      location: event.location,
+      budget: event.budget,
+      status: event.status,
+      notes: event.notes,
+    });
+    setError(null);
+    setIsModalOpen(true);
+  }
+
+  async function handleDelete(event: EventRecord) {
+    if (!event.id || !window.confirm(`Delete "${event.name}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingEventId(event.id);
+    setError(null);
+    try {
+      await deleteEvent(event.id);
+      await loadEvents();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to delete the event right now.",
+      );
+    } finally {
+      setDeletingEventId(null);
     }
   }
 
@@ -986,6 +1033,7 @@ function Events() {
           className="primary-button"
           onClick={() => {
             setError(null);
+            setEditingEvent(null);
             setFormData(emptyEventForm);
             setIsModalOpen(true);
           }}
@@ -1020,6 +1068,7 @@ function Events() {
                   <th>Location</th>
                   <th>Budget</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1030,6 +1079,24 @@ function Events() {
                     <td>{event.location || "—"}</td>
                     <td>{formatMoney(event.budget)}</td>
                     <td><span className={`status ${statusClass(event.status)}`}>{event.status}</span></td>
+                    <td>
+                      <button
+                        type="button"
+                        className="secondary-button table-action-button"
+                        onClick={() => handleEdit(event)}
+                        disabled={deletingEventId !== null || isSubmitting}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="delete-button"
+                        onClick={() => void handleDelete(event)}
+                        disabled={deletingEventId !== null || isSubmitting}
+                      >
+                        {deletingEventId === event.id ? "Deleting..." : "Delete"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1043,10 +1110,19 @@ function Events() {
           <div className="grant-modal">
             <div className="modal-header">
               <div>
-                <p className="eyebrow">New Event</p>
-                <h3>Add Event</h3>
+                <p className="eyebrow">{editingEvent ? "Edit Event" : "New Event"}</p>
+                <h3>{editingEvent ? "Edit Event" : "Add Event"}</h3>
               </div>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)} type="button">×</button>
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setEditingEvent(null);
+                  setIsModalOpen(false);
+                }}
+                type="button"
+              >
+                ×
+              </button>
             </div>
             <form className="grant-form" onSubmit={handleSubmit}>
               <label>
@@ -1083,9 +1159,18 @@ function Events() {
                 <textarea name="notes" placeholder="Add event notes here..." value={formData.notes} onChange={handleInputChange} />
               </label>
               <div className="modal-actions">
-                <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setEditingEvent(null);
+                    setIsModalOpen(false);
+                  }}
+                >
+                  Cancel
+                </button>
                 <button type="submit" className="primary-button" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save Event"}
+                  {isSubmitting ? "Saving..." : editingEvent ? "Update Event" : "Save Event"}
                 </button>
               </div>
             </form>

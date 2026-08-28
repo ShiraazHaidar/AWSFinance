@@ -160,6 +160,30 @@ class InfrastructureStack(Stack):
             environment={"EVENTS_TABLE_NAME": events_table.table_name},
         )
 
+        delete_event_lambda = lambda_.Function(
+            self,
+            "DeleteEventFunction",
+            function_name="DeleteEventFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="delete_event.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "delete_event")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"EVENTS_TABLE_NAME": events_table.table_name},
+        )
+
+        update_event_lambda = lambda_.Function(
+            self,
+            "UpdateEventFunction",
+            function_name="UpdateEventFunction",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="update_event.handler",
+            code=lambda_.Code.from_asset(str(project_root / "backend" / "lambdas" / "update_event")),
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={"EVENTS_TABLE_NAME": events_table.table_name},
+        )
+
         create_grant_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["dynamodb:PutItem"],
@@ -196,6 +220,18 @@ class InfrastructureStack(Stack):
                 resources=[events_table.table_arn],
             )
         )
+        delete_event_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:DeleteItem"],
+                resources=[events_table.table_arn],
+            )
+        )
+        update_event_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:UpdateItem"],
+                resources=[events_table.table_arn],
+            )
+        )
 
         grants_resource = api.root.add_resource("grants")
         grants_resource.add_method(
@@ -209,6 +245,20 @@ class InfrastructureStack(Stack):
         events_resource.add_method(
             "POST",
             apigateway.LambdaIntegration(create_event_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+
+        event_resource = events_resource.add_resource("{id}")
+        event_resource.add_method(
+            "DELETE",
+            apigateway.LambdaIntegration(delete_event_lambda),
+            authorization_type=apigateway.AuthorizationType.COGNITO,
+            authorizer=cognito_authorizer,
+        )
+        event_resource.add_method(
+            "PUT",
+            apigateway.LambdaIntegration(update_event_lambda),
             authorization_type=apigateway.AuthorizationType.COGNITO,
             authorizer=cognito_authorizer,
         )
